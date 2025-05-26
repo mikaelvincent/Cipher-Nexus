@@ -3,12 +3,14 @@
 This module provides a mapping-based substitution cipher for byte data. A single substitution mapping is applied for all bytes in the 0-255 range.
 """
 
+from __future__ import annotations
 from typing import Optional
 
+from src.ciphers.cipher_base import CipherBase
 from src.utils.common import generate_permutation_bytes
 
 
-class MonoalphabeticCipher:
+class MonoalphabeticCipher(CipherBase):
     """A monoalphabetic cipher that substitutes each byte with a unique mapping.
 
     This cipher uses a 256-byte 'key' representing a permutation of 0-255. Each position in the key corresponds to a plaintext byte (0-255), and the value at that position is the substituted byte for encryption. The decryption process uses the inverse of this mapping.
