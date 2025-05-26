@@ -16,7 +16,7 @@ class MonoalphabeticCipher(CipherBase):
     This cipher uses a 256-byte 'key' representing a permutation of 0-255. Each position in the key corresponds to a plaintext byte (0-255), and the value at that position is the substituted byte for encryption. The decryption process uses the inverse of this mapping.
 
     Attributes:
-        key: The 256-byte key (permutation of the values 0-255) used for substitution.
+        key: The 256-byte key (permutation of 0-255) used for substitution.
     """
 
     def __init__(self, key: Optional[bytes] = None) -> None:
