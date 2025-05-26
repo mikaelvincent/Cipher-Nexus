@@ -1,17 +1,17 @@
 """Vigenere cipher implementation.
 
-This module provides a classical Vigenere cipher for text-based shifts keyed by a passphrase. Only alphabetic characters (A–Z, a–z) are shifted; other bytes remain unchanged. Encryption and decryption each iterate over the passphrase repeatedly to determine shift amounts.
+This module provides a classical Vigenere cipher for text-based shifts keyed by a passphrase. Only alphabetic characters (A to Z, a to z) are shifted; other bytes remain unchanged.
 """
 
-import secrets
-import string
 from typing import Optional
+
+from src.utils.common import generate_random_passphrase
 
 
 class VigenereCipher:
     """A classical Vigenere cipher that shifts letters by passphrase-based offsets.
 
-    Only A–Z and a–z are shifted. Non-alphabetic characters are left as is. The passphrase is repeated across the length of the plaintext or ciphertext.
+    Only A to Z and a to z are shifted. Non-alphabetic characters are left as is. The passphrase is repeated across the length of the plaintext or ciphertext.
 
     Attributes:
         passphrase: The string key used for encryption/decryption.
@@ -27,27 +27,14 @@ class VigenereCipher:
             ValueError: If the provided passphrase is empty or only whitespace.
         """
         if passphrase is None:
-            self.passphrase = self._generate_random_passphrase()
+            self.passphrase = generate_random_passphrase(16)
         else:
             if not passphrase.strip():
                 raise ValueError("Passphrase must not be empty or only whitespace.")
             self.passphrase = passphrase
 
-        # Precompute shift values for each character in the passphrase.
+        # Precompute shift values for each character in the passphrase
         self._shifts = self._compute_shifts(self.passphrase)
-
-    @staticmethod
-    def _generate_random_passphrase(length: int = 16) -> str:
-        """Generate a random passphrase of the given length, using A–Z and a–z.
-
-        Args:
-            length: The number of characters in the generated passphrase. Defaults to 16.
-
-        Returns:
-            A string containing random alphabetical characters.
-        """
-        alphabet = string.ascii_letters
-        return "".join(secrets.choice(alphabet) for _ in range(length))
 
     @staticmethod
     def _compute_shifts(passphrase: str) -> list[int]:
@@ -74,7 +61,7 @@ class VigenereCipher:
     def encrypt(self, plaintext: bytes) -> bytes:
         """Encrypt the given plaintext using the Vigenere cipher.
 
-        Alphabetic characters (A–Z, a–z) are shifted by passphrase-based offsets. Other characters remain unchanged.
+        Alphabetic characters (A to Z, a to z) are shifted by passphrase-based offsets. Other characters remain unchanged.
 
         Args:
             plaintext: The data to be encrypted.
