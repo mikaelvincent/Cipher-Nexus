@@ -1,6 +1,6 @@
 """Main entry point for the Cipher Nexus application.
 
-This module provides a command-line interface for encrypting or decrypting files and can launch the Tkinter GUI if called without arguments.
+This module provides a command-line interface for encrypting or decrypting files, generating RSA keys, and can launch the Tkinter GUI if called without arguments.
 """
 
 import logging
@@ -22,11 +22,12 @@ from src.utils.constants import LENGTH_HEADER_SIZE, AES_KEY_SIZE, GCM_IV_SIZE
 def main() -> None:
     """Entry point for Cipher Nexus.
 
-    Usage:
+    Usage (CLI):
         If called with no arguments, launches the GUI.
-        Otherwise, call:
+        Otherwise:
             python main.py encrypt <input> <output> <public_key.pem>
             python main.py decrypt <input> <output> <private_key.pem>
+            python main.py genkey <private_key.pem> <public_key.pem> [<key_size>]
     """
     # Configure basic logging
     logging.basicConfig(level=logging.INFO)
@@ -66,7 +67,7 @@ def main() -> None:
             # 5. Write output
             write_data(output_path, final_output)
 
-            logger.info(f"Encryption complete. Output written to {output_path}")
+            logger.info("Encryption complete. Output written to %s", output_path)
         except Exception as exc:
             logger.exception("Encryption failed.")
             print(f"Encryption failed: {exc}")
@@ -120,15 +121,43 @@ def main() -> None:
                 raise ValueError("SHA-256 mismatch: possible corruption or tampering.")
 
             write_data(output_path, plaintext)
-            logger.info(f"Decryption complete. Output written to {output_path}")
+            logger.info("Decryption complete. Output written to %s", output_path)
         except Exception as exc:
             logger.exception("Decryption failed.")
             print(f"Decryption failed: {exc}")
+    
+    elif cmd == "genkey" and len(sys.argv) in (4, 5):
+        # Usage: python main.py genkey <private_key.pem> <public_key.pem> [<key_size>]
+        private_key_path = sys.argv[2]
+        public_key_path = sys.argv[3]
+        if len(sys.argv) == 5:
+            try:
+                key_size = int(sys.argv[4])
+            except ValueError:
+                print("Invalid key size specified. Must be an integer.")
+                return
+        else:
+            key_size = 2048  # Default
+
+        try:
+            rsa_mgr = RSAManager()
+            rsa_mgr.generate_key_pair(key_size=key_size)
+            rsa_mgr.save_private_key(private_key_path)
+            rsa_mgr.save_public_key(public_key_path)
+            logger.info(
+                "Key generation complete. Private key: %s, Public key: %s",
+                private_key_path,
+                public_key_path,
+            )
+        except Exception as exc:
+            logger.exception("Key generation failed.")
+            print(f"Key generation failed: {exc}")
 
     else:
         print("Usage:")
         print("  python main.py encrypt <input> <output> <public_key.pem>")
         print("  python main.py decrypt <input> <output> <private_key.pem>")
+        print("  python main.py genkey <private_key.pem> <public_key.pem> [<key_size>]")
 
 
 if __name__ == "__main__":
