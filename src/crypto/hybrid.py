@@ -1,9 +1,10 @@
 """Hybrid encryption/decryption utilities with RSA + AES-GCM.
 
 This module:
-1. Handles pickling cipher parameters.
-2. Wraps them with AES-GCM, then encrypts that small AES key/IV/tag with RSA (envelope).
-3. Conversely, decrypts with RSA, reconstructs AES-GCM, and unpickles cipher parameters.
+1. Serializes cipher parameters with pickle.
+2. Encrypts them using AES-GCM (the ephemeral key).
+3. Wraps that AES key/IV/tag with RSA (public key).
+4. Conversely, decrypts with RSA, reconstructs AES-GCM, and unpickles.
 """
 
 from __future__ import annotations
@@ -32,10 +33,13 @@ def envelope_encrypt_params(
         rsa_public_key_path: Path to the RSA public key (PEM).
 
     Returns:
-        A tuple (ephemeral_data_encrypted, param_ciphertext, param_tag),
-        where ephemeral_data_encrypted is the RSA-encrypted AES key + IV + tag,
-        and param_ciphertext is the AES-GCM-encrypted cipher_params,
-        with param_tag as the GCM authentication tag.
+        A tuple (ephemeral_data_encrypted, param_ciphertext, param_tag), where:
+          - ephemeral_data_encrypted is the RSA-encrypted AES key + IV + tag
+          - param_ciphertext is the AES-GCM-encrypted cipher_params
+          - param_tag is the GCM authentication tag
+
+    Raises:
+        ValueError: If the RSA encryption fails or the public key is invalid.
     """
     # Serialize cipher parameters
     param_bytes = pickle.dumps(cipher_params)
@@ -77,7 +81,7 @@ def envelope_decrypt_params(
         The original dictionary of cipher parameters.
 
     Raises:
-        ValueError: If the RSA or AES decryption fails, or if the loaded parameters are invalid.
+        ValueError: If RSA decryption fails, AES-GCM tag mismatch, or unpickling fails.
     """
     rsa_mgr = RSAManager()
     rsa_mgr.load_private_key(rsa_private_key_path)
