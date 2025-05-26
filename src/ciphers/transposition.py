@@ -83,27 +83,31 @@ class TranspositionCipher:
         columns = self.columns
         rows = (length + columns - 1) // columns
 
-        # Initialize table for columnar placement
-        table = [bytearray(columns) for _ in range(rows)]
+        # Determine the actual row sizes
+        remaining = length
+        row_lengths = []
+        for _ in range(rows):
+            row_size = min(remaining, columns)
+            row_lengths.append(row_size)
+            remaining -= row_size
+
+        # Initialize the table with the appropriate row sizes
+        table = [bytearray(row_size) for row_size in row_lengths]
 
         # Fill the table column by column from the ciphertext
         idx = 0
         for col in range(columns):
-            for row in range(rows):
-                if idx < length:
-                    table[row][col] = ciphertext[idx]
+            for row_index, row_size in enumerate(row_lengths):
+                if col < row_size:
+                    table[row_index][col] = ciphertext[idx]
                     idx += 1
 
         # Read row by row to form plaintext
         plaintext = bytearray(length)
-        out_idx = 0
-        for row in range(rows):
-            for col in range(columns):
-                plaintext[out_idx] = table[row][col]
-                out_idx += 1
-                if out_idx == length:
-                    break
-            if out_idx == length:
-                break
+        pos = 0
+        for row_data in table:
+            for val in row_data:
+                plaintext[pos] = val
+                pos += 1
 
         return bytes(plaintext)
