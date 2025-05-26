@@ -3,12 +3,15 @@
 This module provides an XOR-based cipher for byte data. Each byte in the key is XORed with the corresponding plaintext byte to encrypt. For decryption, the same operation is applied again since XOR is its own inverse.
 """
 
+from __future__ import annotations
 from typing import Optional
 
+from src.ciphers.cipher_base import CipherBase
+from src.ciphers._stream_cipher_utils import repeated_xor
 from src.utils.common import generate_random_bytes
 
 
-class VernamCipher:
+class VernamCipher(CipherBase):
     """An XOR-based Vernam cipher that repeatedly XORs each byte with a key.
 
     Attributes:
@@ -42,7 +45,7 @@ class VernamCipher:
         Returns:
             The encrypted data as bytes.
         """
-        return self._xor_data(plaintext)
+        return repeated_xor(plaintext, self.key)
 
     def decrypt(self, ciphertext: bytes) -> bytes:
         """Decrypt the given ciphertext by XORing each byte with the key.
@@ -55,19 +58,4 @@ class VernamCipher:
         Returns:
             The decrypted data as bytes.
         """
-        return self._xor_data(ciphertext)
-
-    def _xor_data(self, data: bytes) -> bytes:
-        """Perform XOR between the data and the key, repeating the key if needed.
-
-        Args:
-            data: A bytes object to be XORed with the key.
-
-        Returns:
-            A bytes object resulting from XORing the data with the key.
-        """
-        output = bytearray(len(data))
-        key_length = len(self.key)
-        for i, byte_val in enumerate(data):
-            output[i] = byte_val ^ self.key[i % key_length]
-        return bytes(output)
+        return repeated_xor(ciphertext, self.key)
