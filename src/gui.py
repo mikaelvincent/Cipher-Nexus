@@ -20,6 +20,8 @@ from src.crypto.hashing import sha256_hash_data
 def start_gui() -> None:
     """Launch the Tkinter-based GUI for the Cipher Nexus project."""
     root = tk.Tk()
+    root.title("Cipher Nexus")
+    root.resizable(False, False)
     app = CipherNexusGUI(master=root)
     app.mainloop()
 
@@ -37,10 +39,10 @@ class CipherNexusGUI(tk.Frame):
             master: An optional Tkinter root or parent widget.
         """
         super().__init__(master)
-        self.master = master
-        self.master.title("Cipher Nexus")
-        self.pack(padx=10, pady=10)
+        self.pack(padx=10, pady=(10, 5))
         self._create_widgets()
+        # Hide status label until an operation completes
+        self.status_label.grid_remove()
 
     def _create_widgets(self) -> None:
         """Create the layout of labels, buttons, and entry fields for file selection."""
@@ -78,14 +80,21 @@ class CipherNexusGUI(tk.Frame):
         button_browse_key = tk.Button(self, text="Browse...", command=self._browse_key)
         button_browse_key.grid(row=2, column=2, padx=5, pady=5)
 
-        # Row 3: Encrypt/Decrypt buttons
-        button_encrypt = tk.Button(self, text="Encrypt", command=self._encrypt_file)
-        button_encrypt.grid(row=3, column=0, padx=5, pady=5)
+        # Row 3: Subframe for Encrypt/Decrypt buttons
+        self.button_frame = tk.Frame(self)
+        self.button_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5)
 
-        button_decrypt = tk.Button(self, text="Decrypt", command=self._decrypt_file)
-        button_decrypt.grid(row=3, column=1, padx=5, pady=5)
+        # Configure columns for equal horizontal expansion
+        self.button_frame.columnconfigure(0, weight=1)
+        self.button_frame.columnconfigure(1, weight=1)
 
-        # Row 4: Status label
+        button_encrypt = tk.Button(self.button_frame, text="Encrypt", command=self._encrypt_file)
+        button_encrypt.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=5)
+
+        button_decrypt = tk.Button(self.button_frame, text="Decrypt", command=self._decrypt_file)
+        button_decrypt.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=5)
+
+        # Row 4: Status label (initially hidden)
         self.status_label = tk.Label(self, text="", fg="blue")
         self.status_label.grid(row=4, column=0, columnspan=3, padx=5, pady=5)
 
@@ -161,7 +170,9 @@ class CipherNexusGUI(tk.Frame):
                 out_f.write(encrypted_params)
                 out_f.write(data)
 
+            # Show status label after operation completes
             self.status_label.config(text="Encryption complete.")
+            self.status_label.grid()
         except Exception as exc:
             messagebox.showerror("Error", f"Encryption failed: {exc}")
 
@@ -219,6 +230,8 @@ class CipherNexusGUI(tk.Frame):
             with open(output_path, "wb") as out_f:
                 out_f.write(data)
 
+            # Show status label after operation completes
             self.status_label.config(text="Decryption complete.")
+            self.status_label.grid()
         except Exception as exc:
             messagebox.showerror("Error", f"Decryption failed: {exc}")
