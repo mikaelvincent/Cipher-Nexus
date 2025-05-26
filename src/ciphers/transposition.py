@@ -3,11 +3,18 @@
 This module provides a columnar transposition cipher for byte data. A rectangular table is formed by writing plaintext bytes row by row, then reading them out column by column for encryption. Decryption reverses the process.
 """
 
+from __future__ import annotations
 import secrets
 from typing import Optional
 
+from src.ciphers.cipher_base import CipherBase
 
-class TranspositionCipher:
+# Define constants for random columns range
+MIN_COLUMNS = 4
+MAX_COLUMNS = 16
+
+
+class TranspositionCipher(CipherBase):
     """A columnar transposition cipher that rearranges bytes into columns.
 
     Attributes:
@@ -18,7 +25,7 @@ class TranspositionCipher:
         """Initialize a TranspositionCipher with a provided or random column count.
 
         Args:
-            columns: The number of columns for the transposition. If None, a random value between 4 and 16 is chosen.
+            columns: The number of columns for the transposition. If None, a random value between MIN_COLUMNS and MAX_COLUMNS is chosen.
 
         Raises:
             ValueError: If columns <= 1.
@@ -32,12 +39,12 @@ class TranspositionCipher:
 
     @staticmethod
     def _generate_random_columns() -> int:
-        """Generate a random number of columns between 4 and 16.
+        """Generate a random number of columns between MIN_COLUMNS and MAX_COLUMNS.
 
         Returns:
             An integer specifying the column count.
         """
-        return secrets.randbelow(13) + 4  # Generates a value in [4..16]
+        return secrets.randbelow(MAX_COLUMNS - MIN_COLUMNS + 1) + MIN_COLUMNS
 
     def encrypt(self, plaintext: bytes) -> bytes:
         """Encrypt plaintext bytes using columnar transposition.
