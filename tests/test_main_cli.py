@@ -38,9 +38,11 @@ class TestMainCLI(unittest.TestCase):
         encrypted_file = os.path.join(self.temp_dir.name, "sample.enc")
         decrypted_file = os.path.join(self.temp_dir.name, "sample.dec")
 
+        # Use '-m src.main' so Python recognizes 'src' as a package
         cmd_encrypt = [
             sys.executable,
-            "src/main.py",
+            "-m",
+            "src.main",
             "encrypt",
             self.sample_file,
             encrypted_file,
@@ -48,7 +50,8 @@ class TestMainCLI(unittest.TestCase):
         ]
         cmd_decrypt = [
             sys.executable,
-            "src/main.py",
+            "-m",
+            "src.main",
             "decrypt",
             encrypted_file,
             decrypted_file,
@@ -74,7 +77,8 @@ class TestMainCLI(unittest.TestCase):
 
         cmd_genkey = [
             sys.executable,
-            "src/main.py",
+            "-m",
+            "src.main",
             "genkey",
             new_priv,
             new_pub,
@@ -87,7 +91,7 @@ class TestMainCLI(unittest.TestCase):
 
     def test_invalid_args(self) -> None:
         """Check that invalid arguments produce usage help."""
-        cmd_invalid = [sys.executable, "src/main.py", "unknown_cmd"]
+        cmd_invalid = [sys.executable, "-m", "src.main", "unknown_cmd"]
         result = subprocess.run(cmd_invalid, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Usage:", result.stdout + result.stderr)
