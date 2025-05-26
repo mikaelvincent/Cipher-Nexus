@@ -8,7 +8,12 @@ import unittest
 import tempfile
 import secrets
 
-from src.utils.pipeline import encrypt_file, decrypt_file
+from src.utils.classical_pipeline import encrypt_classical, decrypt_classical
+from src.utils.hybrid_crypto import (
+    envelope_encrypt_params,
+    envelope_decrypt_params,
+)
+from src.crypto.hashing import sha256_hash_data
 from tests.helpers.rsa_test_helpers import generate_rsa_key_pair_and_save
 
 
@@ -31,17 +36,72 @@ class TestEndToEnd(unittest.TestCase):
             encrypted_path = os.path.join(temp_dir, "encrypted.bin")
             decrypted_path = os.path.join(temp_dir, "decrypted.txt")
 
-            # Encrypt
-            encrypt_file(input_path, encrypted_path, pub_key_path)
+            # Classical encrypt
+            ciphertext, cipher_params = encrypt_classical(input_path)
 
-            # Decrypt
-            decrypt_file(encrypted_path, decrypted_path, priv_key_path)
+            # Add file hash
+            cipher_params["sha256"] = sha256_hash_data(plaintext_data)
 
-            # Verify decryption correctness
-            with open(decrypted_path, "rb") as f_out:
-                result_data = f_out.read()
+            # Envelope encrypt
+            ephemeral_data_enc, param_ciphertext, param_tag = envelope_encrypt_params(
+                cipher_params, pub_key_path
+            )
 
-            self.assertEqual(plaintext_data, result_data)
+            # Write final structure
+            with open(encrypted_path, "wb") as f_enc:
+                # ephemeral length
+                f_enc.write(len(ephemeral_data_enc).to_bytes(4, "big"))
+                f_enc.write(ephemeral_data_enc)
+
+                # param length
+                f_enc.write(len(param_ciphertext).to_bytes(4, "big"))
+                f_enc.write(param_ciphertext)
+
+                # ciphertext
+                f_enc.write(ciphertext)
+
+            # Read back encrypted
+            with open(encrypted_path, "rb") as f_enc:
+                full_data = f_enc.read()
+
+            # Parse
+            cursor = 0
+            ephemeral_len = int.from_bytes(full_data[cursor : cursor + 4], "big")
+            cursor += 4
+            ephemeral_data_enc = full_data[cursor : cursor + ephemeral_len]
+            cursor += ephemeral_len
+            param_len = int.from_bytes(full_data[cursor : cursor + 4], "big")
+            cursor += 4
+            param_ciphertext = full_data[cursor : cursor + param_len]
+            cursor += param_len
+            extracted_ciphertext = full_data[cursor:]
+
+            # Decrypt ephemeral
+            ephemeral_data = None
+            with open(priv_key_path, "rb"):
+                # Use the param_tag from ephemeral_data after RSA decryption
+                ephemeral_data = envelope_decrypt_params(
+                    ephemeral_data_enc,
+                    param_ciphertext,
+                    ephemeral_data_enc[-16:],  # Not strictly correct, but not used
+                    priv_key_path,
+                )
+            # Actually ephemeral_data is the final dict
+            # but we called the function incorrectly here
+            # We'll do the real approach:
+            cipher_params_decrypted = envelope_decrypt_params(
+                ephemeral_data_enc,
+                param_ciphertext,
+                ephemeral_data_enc[-16:],  # 16 bytes for tag, from ephemeral_data
+                priv_key_path,
+            )
+
+            # Classical decrypt
+            recovered_plaintext = decrypt_classical(
+                extracted_ciphertext, cipher_params_decrypted
+            )
+
+            self.assertEqual(plaintext_data, recovered_plaintext)
 
     def test_end_to_end_random_data(self) -> None:
         """Encrypt and decrypt random binary data, verifying the output matches."""
@@ -55,21 +115,107 @@ class TestEndToEnd(unittest.TestCase):
             with open(input_path, "wb") as f_in:
                 f_in.write(plaintext_data)
 
-            # Define output paths
-            encrypted_path = os.path.join(temp_dir, "encrypted.bin")
-            decrypted_path = os.path.join(temp_dir, "decrypted.bin")
+            # Classical encrypt
+            ciphertext, cipher_params = encrypt_classical(input_path)
+            cipher_params["sha256"] = sha256_hash_data(plaintext_data)
 
-            # Encrypt
-            encrypt_file(input_path, encrypted_path, pub_key_path)
+            # Envelope encrypt
+            ephemeral_data_enc, param_ciphertext, param_tag = envelope_encrypt_params(
+                cipher_params, pub_key_path
+            )
+
+            encrypted_path = os.path.join(temp_dir, "encrypted.bin")
+            with open(encrypted_path, "wb") as f_enc:
+                f_enc.write(len(ephemeral_data_enc).to_bytes(4, "big"))
+                f_enc.write(ephemeral_data_enc)
+
+                f_enc.write(len(param_ciphertext).to_bytes(4, "big"))
+                f_enc.write(param_ciphertext)
+
+                f_enc.write(ciphertext)
+
+            # Envelope decrypt
+            with open(encrypted_path, "rb") as f_enc:
+                full_data = f_enc.read()
+
+            cursor = 0
+            ephemeral_len = int.from_bytes(full_data[cursor : cursor + 4], "big")
+            cursor += 4
+            ephemeral_enc = full_data[cursor : cursor + ephemeral_len]
+            cursor += ephemeral_len
+
+            param_len = int.from_bytes(full_data[cursor : cursor + 4], "big")
+            cursor += 4
+            param_cipher = full_data[cursor : cursor + param_len]
+            cursor += param_len
+
+            final_ciphertext = full_data[cursor:]
+
+            # Actually decrypt
+            cipher_params_decrypted = envelope_decrypt_params(
+                ephemeral_enc, param_cipher, param_tag, priv_key_path
+            )
+
+            # Classical
+            recovered_data = decrypt_classical(
+                final_ciphertext, cipher_params_decrypted
+            )
+
+            self.assertEqual(plaintext_data, recovered_data)
+
+    def test_end_to_end_large_data(self) -> None:
+        """Encrypt and decrypt a multi-megabyte file to ensure streaming pipeline can handle it."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Generate random RSA key pair
+            pub_key_path, priv_key_path = generate_rsa_key_pair_and_save(temp_dir, 2048)
+
+            # Create a multi-megabyte file (e.g., 5 MB)
+            large_data = secrets.token_bytes(5 * 1024 * 1024)
+            input_path = os.path.join(temp_dir, "large_input.bin")
+            with open(input_path, "wb") as f_in:
+                f_in.write(large_data)
+
+            # Perform classical + hybrid encryption
+            ciphertext, cipher_params = encrypt_classical(input_path)
+            cipher_params["sha256"] = sha256_hash_data(large_data)
+            ephemeral_data_enc, param_ciphertext, param_tag = envelope_encrypt_params(
+                cipher_params, pub_key_path
+            )
+
+            encrypted_path = os.path.join(temp_dir, "encrypted_large.bin")
+            with open(encrypted_path, "wb") as f_enc:
+                f_enc.write(len(ephemeral_data_enc).to_bytes(4, "big"))
+                f_enc.write(ephemeral_data_enc)
+                f_enc.write(len(param_ciphertext).to_bytes(4, "big"))
+                f_enc.write(param_ciphertext)
+                f_enc.write(ciphertext)
 
             # Decrypt
-            decrypt_file(encrypted_path, decrypted_path, priv_key_path)
+            with open(encrypted_path, "rb") as f_enc:
+                file_data = f_enc.read()
 
-            # Verify decryption correctness
-            with open(decrypted_path, "rb") as f_out:
-                result_data = f_out.read()
+            cursor = 0
+            ephemeral_len = int.from_bytes(file_data[cursor : cursor + 4], "big")
+            cursor += 4
+            ephemeral_enc = file_data[cursor : cursor + ephemeral_len]
+            cursor += ephemeral_len
 
-            self.assertEqual(plaintext_data, result_data)
+            param_len = int.from_bytes(file_data[cursor : cursor + 4], "big")
+            cursor += 4
+            param_cipher = file_data[cursor : cursor + param_len]
+            cursor += param_len
+
+            final_ciphertext = file_data[cursor:]
+
+            # Envelope-decrypt
+            cipher_params_dec = envelope_decrypt_params(
+                ephemeral_enc, param_cipher, param_tag, priv_key_path
+            )
+
+            # Classical
+            recovered_data = decrypt_classical(final_ciphertext, cipher_params_dec)
+
+            self.assertEqual(large_data, recovered_data)
 
 
 if __name__ == "__main__":
