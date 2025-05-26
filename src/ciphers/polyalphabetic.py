@@ -20,8 +20,7 @@ class PolyalphabeticCipher:
         """Initialize a PolyalphabeticCipher with a provided or randomly generated key.
 
         Args:
-            key: An optional bytes object for the cipher. If None, a random 16-byte
-                key is generated.
+            key: An optional bytes object for the cipher. If None, a random 16-byte key is generated.
 
         Raises:
             ValueError: If the provided key is empty.
