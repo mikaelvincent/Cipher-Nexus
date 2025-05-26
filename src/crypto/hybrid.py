@@ -14,6 +14,7 @@ import pickle
 import secrets
 from typing import Any, Dict
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from src.crypto.rsa_manager import RSAManager
@@ -99,7 +100,11 @@ def envelope_decrypt_params(
     # Decrypt parameters with AES-GCM
     aes_cipher = Cipher(algorithms.AES(aes_key), modes.GCM(aes_iv, param_tag))
     decryptor = aes_cipher.decryptor()
-    param_bytes = decryptor.update(param_ciphertext) + decryptor.finalize()
+    try:
+        param_bytes = decryptor.update(param_ciphertext) + decryptor.finalize()
+    except InvalidTag as e:
+        logger.error("AES-GCM decryption failed: invalid tag.")
+        raise ValueError("AES-GCM tag mismatch: possible data corruption.") from e
 
     # Unpickle to recover the parameter dictionary
     cipher_params = pickle.loads(param_bytes)
