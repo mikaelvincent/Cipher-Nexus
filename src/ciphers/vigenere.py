@@ -42,7 +42,7 @@ class VigenereCipher(CipherBase):
     def _compute_shifts(passphrase: str) -> list[int]:
         """Compute a list of shifts for each character in the passphrase.
 
-        Each character's shift is derived from its lowercase alphabet index (A/a = 0, Z/z = 25).
+        Each character's shift is derived from its lowercase alphabet index (A/a=0, Z/z=25). Non-alphabetic passphrase chars default to zero shift.
 
         Args:
             passphrase: The passphrase string.
@@ -80,11 +80,9 @@ class VigenereCipher(CipherBase):
             shift = self._shifts[shift_index % pass_len]
 
             if 65 <= ch <= 90:  # 'A'-'Z'
-                # Shift within uppercase range
                 ch = ((ch - 65 + shift) % 26) + 65
                 shift_index += 1
             elif 97 <= ch <= 122:  # 'a'-'z'
-                # Shift within lowercase range
                 ch = ((ch - 97 + shift) % 26) + 97
                 shift_index += 1
 
@@ -112,11 +110,9 @@ class VigenereCipher(CipherBase):
             shift = self._shifts[shift_index % pass_len]
 
             if 65 <= ch <= 90:  # 'A'-'Z'
-                # Reverse shift within uppercase range
                 ch = ((ch - 65 - shift) % 26) + 65
                 shift_index += 1
             elif 97 <= ch <= 122:  # 'a'-'z'
-                # Reverse shift within lowercase range
                 ch = ((ch - 97 - shift) % 26) + 97
                 shift_index += 1
 
