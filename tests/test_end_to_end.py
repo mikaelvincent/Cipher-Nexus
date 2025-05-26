@@ -8,11 +8,8 @@ import unittest
 import tempfile
 import secrets
 
-from src.utils.classical_pipeline import encrypt_classical, decrypt_classical
-from src.utils.hybrid_crypto import (
-    envelope_encrypt_params,
-    envelope_decrypt_params,
-)
+from src.pipeline.classical import encrypt_classical, decrypt_classical
+from src.crypto.hybrid import envelope_encrypt_params, envelope_decrypt_params
 from src.crypto.hashing import sha256_hash_data
 from src.crypto.rsa_manager import RSAManager
 from tests.helpers.rsa_test_helpers import generate_rsa_key_pair_and_save
@@ -38,7 +35,7 @@ class TestEndToEnd(unittest.TestCase):
             decrypted_path = os.path.join(temp_dir, "decrypted.txt")
 
             # Classical encrypt in memory
-            ciphertext, cipher_params = encrypt_classical(input_path)
+            ciphertext, cipher_params = encrypt_classical(plaintext_data)
 
             # Compute and store file hash
             cipher_params["sha256"] = sha256_hash_data(plaintext_data)
@@ -49,9 +46,6 @@ class TestEndToEnd(unittest.TestCase):
             )
 
             # Write final structure to the encrypted file:
-            #  [4-byte length of ephemeral_data_enc][ephemeral_data_enc]
-            #  [4-byte length of param_ciphertext][param_ciphertext]
-            #  [ciphertext]
             with open(encrypted_path, "wb") as f_enc:
                 f_enc.write(len(ephemeral_data_enc).to_bytes(4, "big"))
                 f_enc.write(ephemeral_data_enc)
@@ -80,7 +74,6 @@ class TestEndToEnd(unittest.TestCase):
             ephemeral_data = rsa_mgr.decrypt(ephemeral_data_encrypted)
 
             # ephemeral_data = aes_key + aes_iv + param_tag
-            # The tag is the last 16 bytes of ephemeral_data
             actual_tag = ephemeral_data[-16:]
 
             # Now properly decrypt the parameters with the correct tag
@@ -111,7 +104,7 @@ class TestEndToEnd(unittest.TestCase):
                 f_in.write(plaintext_data)
 
             # Classical encrypt
-            ciphertext, cipher_params = encrypt_classical(input_path)
+            ciphertext, cipher_params = encrypt_classical(plaintext_data)
             cipher_params["sha256"] = sha256_hash_data(plaintext_data)
 
             # Envelope encrypt
@@ -144,7 +137,7 @@ class TestEndToEnd(unittest.TestCase):
 
             final_ciphertext = full_data[cursor:]
 
-            # RSA-decrypt ephemeral data so we can confirm the real tag
+            # RSA-decrypt ephemeral data
             rsa_mgr = RSAManager()
             rsa_mgr.load_private_key(priv_key_path)
             ephemeral_data = rsa_mgr.decrypt(ephemeral_enc)
@@ -174,7 +167,7 @@ class TestEndToEnd(unittest.TestCase):
                 f_in.write(large_data)
 
             # Perform classical + hybrid encryption
-            ciphertext, cipher_params = encrypt_classical(input_path)
+            ciphertext, cipher_params = encrypt_classical(large_data)
             cipher_params["sha256"] = sha256_hash_data(large_data)
             ephemeral_data_enc, param_ciphertext, param_tag = envelope_encrypt_params(
                 cipher_params, pub_key_path
