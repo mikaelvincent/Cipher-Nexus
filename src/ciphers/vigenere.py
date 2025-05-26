@@ -46,7 +46,7 @@ class VigenereCipher:
             passphrase: The passphrase string.
 
         Returns:
-            A list of integer shift values (0–25) corresponding to each character in the passphrase.
+            A list of integer shift values (0-25) corresponding to each character in the passphrase.
         """
         shifts = []
         for ch in passphrase:
@@ -77,11 +77,11 @@ class VigenereCipher:
             ch = byte_val
             shift = self._shifts[shift_index % pass_len]
 
-            if 65 <= ch <= 90:  # 'A'–'Z'
+            if 65 <= ch <= 90:  # 'A'-'Z'
                 # Shift within uppercase range
                 ch = ((ch - 65 + shift) % 26) + 65
                 shift_index += 1
-            elif 97 <= ch <= 122:  # 'a'–'z'
+            elif 97 <= ch <= 122:  # 'a'-'z'
                 # Shift within lowercase range
                 ch = ((ch - 97 + shift) % 26) + 97
                 shift_index += 1
@@ -109,11 +109,11 @@ class VigenereCipher:
             ch = byte_val
             shift = self._shifts[shift_index % pass_len]
 
-            if 65 <= ch <= 90:  # 'A'–'Z'
+            if 65 <= ch <= 90:  # 'A'-'Z'
                 # Reverse shift within uppercase range
                 ch = ((ch - 65 - shift) % 26) + 65
                 shift_index += 1
-            elif 97 <= ch <= 122:  # 'a'–'z'
+            elif 97 <= ch <= 122:  # 'a'-'z'
                 # Reverse shift within lowercase range
                 ch = ((ch - 97 - shift) % 26) + 97
                 shift_index += 1
