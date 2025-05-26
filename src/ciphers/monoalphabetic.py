@@ -1,19 +1,20 @@
 """Monoalphabetic cipher implementation.
 
-This module provides a mapping-based substitution cipher for byte data. A single substitution mapping is applied for all bytes in the 0–255 range.
+This module provides a mapping-based substitution cipher for byte data. A single substitution mapping is applied for all bytes in the 0-255 range.
 """
 
-import secrets
 from typing import Optional
+
+from src.utils.common import generate_permutation_bytes
 
 
 class MonoalphabeticCipher:
     """A monoalphabetic cipher that substitutes each byte with a unique mapping.
 
-    This cipher uses a 256-byte 'key' representing a permutation of 0–255. Each position in the key corresponds to a plaintext byte (0–255), and the value at that position is the substituted byte for encryption. The decryption process uses the inverse of this mapping.
+    This cipher uses a 256-byte 'key' representing a permutation of 0-255. Each position in the key corresponds to a plaintext byte (0-255), and the value at that position is the substituted byte for encryption. The decryption process uses the inverse of this mapping.
 
     Attributes:
-        key: The 256-byte key (permutation of the values 0–255) used for substitution.
+        key: The 256-byte key (permutation of the values 0-255) used for substitution.
     """
 
     def __init__(self, key: Optional[bytes] = None) -> None:
@@ -30,7 +31,7 @@ class MonoalphabeticCipher:
         else:
             if len(key) != 256:
                 raise ValueError(
-                    "Key must be exactly 256 bytes representing a permutation of 0–255."
+                    "Key must be exactly 256 bytes representing a permutation of 0-255."
                 )
             self.key = key
 
@@ -40,14 +41,12 @@ class MonoalphabeticCipher:
 
     @staticmethod
     def generate_random_key() -> bytes:
-        """Generate a random 256-byte key (permutation of 0–255).
+        """Generate a random 256-byte key (permutation of 0-255).
 
         Returns:
-            A bytes object representing a random permutation of the values 0–255.
+            A bytes object representing a random permutation of the values 0-255.
         """
-        arr = list(range(256))
-        secrets.SystemRandom().shuffle(arr)
-        return bytes(arr)
+        return generate_permutation_bytes(256)
 
     def encrypt(self, plaintext: bytes) -> bytes:
         """Encrypt plaintext bytes using the monoalphabetic substitution.
