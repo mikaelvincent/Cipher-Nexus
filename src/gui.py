@@ -1,6 +1,6 @@
 """GUI for the Cipher Nexus project using Tkinter.
 
-This module defines a simple interface for selecting input, output, and key files and performing encryption or decryption. The RSA key file (PEM) can be either a public key (for encryption) or a private key (for decryption).
+This module defines a simple interface for selecting input, output, and key files, generating RSA keys, and performing encryption or decryption. The RSA key file (PEM) can be either a public key (for encryption) or a private key (for decryption).
 """
 
 import logging
@@ -15,6 +15,7 @@ from src.utils.classical_pipeline import (
 )
 from src.utils.hybrid_crypto import envelope_encrypt_params, envelope_decrypt_params
 from src.crypto.hashing import sha256_hash_data
+from src.crypto.rsa_manager import RSAManager
 from src.utils.file_io import read_file_in_chunks
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,10 @@ class CipherNexusGUI(tk.Frame):
 
     def _create_widgets(self) -> None:
         """Create the layout of labels, buttons, and entry fields for file selection."""
+
+        # ------------------------------
         # Row 0: Input file
+        # ------------------------------
         label_input = tk.Label(self, text="File to Process:")
         label_input.grid(row=0, column=0, sticky="e")
 
@@ -58,7 +62,9 @@ class CipherNexusGUI(tk.Frame):
         )
         button_browse_input.grid(row=0, column=2, padx=5, pady=5)
 
+        # ------------------------------
         # Row 1: Output file
+        # ------------------------------
         label_output = tk.Label(self, text="Output File:")
         label_output.grid(row=1, column=0, sticky="e")
 
@@ -70,7 +76,9 @@ class CipherNexusGUI(tk.Frame):
         )
         button_browse_output.grid(row=1, column=2, padx=5, pady=5)
 
+        # ------------------------------
         # Row 2: Key file
+        # ------------------------------
         label_key = tk.Label(self, text="Key File (PEM):")
         label_key.grid(row=2, column=0, sticky="e")
 
@@ -80,23 +88,35 @@ class CipherNexusGUI(tk.Frame):
         button_browse_key = tk.Button(self, text="Browse...", command=self._browse_key)
         button_browse_key.grid(row=2, column=2, padx=5, pady=5)
 
-        # Row 3: Subframe for Encrypt/Decrypt buttons
+        # ------------------------------
+        # Row 3: Subframe for action buttons
+        # ------------------------------
         self.button_frame = tk.Frame(self)
         self.button_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5)
 
         # Configure columns for equal horizontal expansion
         self.button_frame.columnconfigure(0, weight=1)
         self.button_frame.columnconfigure(1, weight=1)
+        self.button_frame.columnconfigure(2, weight=1)
 
-        button_encrypt = tk.Button(self.button_frame, text="Encrypt", command=self._encrypt_file)
+        button_encrypt = tk.Button(
+            self.button_frame, text="Encrypt", command=self._encrypt_file
+        )
         button_encrypt.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=5)
 
         button_decrypt = tk.Button(
             self.button_frame, text="Decrypt", command=self._decrypt_file
         )
-        button_decrypt.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=5)
+        button_decrypt.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
 
+        button_genkey = tk.Button(
+            self.button_frame, text="Generate Key", command=self._generate_key
+        )
+        button_genkey.grid(row=0, column=2, sticky="ew", padx=(5, 0), pady=5)
+
+        # ------------------------------
         # Row 4: Status label (initially hidden)
+        # ------------------------------
         self.status_label = tk.Label(self, text="", fg="blue")
         self.status_label.grid(row=4, column=0, columnspan=3, padx=5, pady=5)
 
@@ -136,7 +156,6 @@ class CipherNexusGUI(tk.Frame):
             ciphertext, cipher_params = encrypt_classical(input_path)
 
             # Compute file hash for integrity
-            # We'll store it with the cipher params
             plaintext_hash = sha256_hash_data(_read_entire_file(input_path))
             cipher_params["sha256"] = plaintext_hash
 
@@ -203,36 +222,22 @@ class CipherNexusGUI(tk.Frame):
             ciphertext = file_data[cursor:]
 
             # Decrypt cipher params
-            # The param_tag is the last 16 bytes from ephemeral_data, but we
-            # store it separately to match the encryption step
-            # We'll slice ephemeral_data AFTER RSA decrypt to confirm the tag.
-            # For clarity, we pass param_tag from outside to envelope_decrypt_params.
-            # In the encryption step, ephemeral_data was AES_KEY + AES_IV + param_tag.
-            # We can just slice the last 16 bytes from ephemeral_data_enc AFTER RSA decrypt,
-            # but let's keep the structure consistent. We'll do it that way.
-            # We'll do a partial RSA decrypt first to get the real ephemeral_data,
-            # then extract the tag.
-
-            # Actually simpler approach: We'll decrypt ephemeral_data_enc fully here:
             from src.crypto.rsa_manager import RSAManager
 
             rsa_mgr = RSAManager()
             rsa_mgr.load_private_key(key_path)
             ephemeral_data = rsa_mgr.decrypt(ephemeral_data_enc)
 
-            # ephemeral_data = aes_key + aes_iv + param_tag
             from src.utils.constants import AES_KEY_SIZE, GCM_IV_SIZE
 
             param_tag = ephemeral_data[AES_KEY_SIZE + GCM_IV_SIZE :]
 
-            # Now do envelope_decrypt_params:
             from src.utils.hybrid_crypto import envelope_decrypt_params
 
             cipher_params = envelope_decrypt_params(
                 ephemeral_data_enc, param_ciphertext, param_tag, key_path
             )
 
-            # Next, do classical decryption
             from src.utils.classical_pipeline import decrypt_classical
 
             plaintext = decrypt_classical(ciphertext, cipher_params)
@@ -244,7 +249,6 @@ class CipherNexusGUI(tk.Frame):
             if new_hash != old_hash:
                 raise ValueError("SHA-256 mismatch: possible corruption or tampering.")
 
-            # Write final plaintext
             from src.utils.classical_pipeline import write_data
 
             write_data(output_path, plaintext)
@@ -254,6 +258,68 @@ class CipherNexusGUI(tk.Frame):
         except Exception as exc:
             logger.exception("Decryption failed.")
             messagebox.showerror("Error", f"Decryption failed: {exc}")
+
+    def _generate_key(self) -> None:
+        """Generate a new RSA key pair and save to user-chosen locations."""
+        # Ask user for private key path
+        priv_path = filedialog.asksaveasfilename(
+            title="Save Private Key As", defaultextension=".pem"
+        )
+        if not priv_path:
+            return
+
+        # Ask user for public key path
+        pub_path = filedialog.asksaveasfilename(
+            title="Save Public Key As", defaultextension=".pem"
+        )
+        if not pub_path:
+            return
+
+        # Ask for key size (simple prompt)
+        # If you want a more advanced dialog, create a top-level window. For brevity, use an input dialog.
+        # Here, we’ll use a default or a simple prompt. If user cancels, use default 2048.
+
+        key_size = 2048
+        answer = messagebox.askquestion(
+            "Key Size",
+            "By default, a 2048-bit key will be created.\n"
+            "Click 'Yes' to proceed with 2048 bits, or 'No' to enter a custom size.",
+        )
+        if answer == "no":
+            # Simple approach: ask the user for a numeric input in a new dialog
+            size_str = tk.simpledialog.askstring(
+                "Custom Key Size", "Enter key size in bits (e.g., 2048, 3072, 4096):"
+            )
+            if size_str is None:
+                # User canceled, revert to default
+                key_size = 2048
+            else:
+                try:
+                    key_size = int(size_str)
+                except ValueError:
+                    messagebox.showerror(
+                        "Invalid Input", "Key size must be an integer. Using 2048 bits."
+                    )
+                    key_size = 2048
+
+        # Generate and save
+        try:
+            rsa_mgr = RSAManager()
+            rsa_mgr.generate_key_pair(key_size=key_size)
+            rsa_mgr.save_private_key(priv_path)
+            rsa_mgr.save_public_key(pub_path)
+
+            self.status_label.config(
+                text=(
+                    f"Key generation complete.\n"
+                    f"Private key: {priv_path}\n"
+                    f"Public key: {pub_path}"
+                )
+            )
+            self.status_label.grid()
+        except Exception as exc:
+            logger.exception("Key generation failed.")
+            messagebox.showerror("Error", f"Key generation failed: {exc}")
 
 
 def _read_entire_file(filepath: str) -> bytes:
