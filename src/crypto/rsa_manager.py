@@ -3,10 +3,18 @@
 This module provides functionality to generate RSA key pairs, encrypt data with a public key, and decrypt data with a private key. Keys can also be saved to and loaded from PEM files. By default, the keys use 2048-bit RSA and OAEP (SHA-256) padding.
 """
 
+from __future__ import annotations
+import logging
 from typing import Optional
 
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
+
+logger = logging.getLogger(__name__)
+
+
+class RSAManagerError(Exception):
+    """Custom exception for RSAManager file operations or key errors."""
 
 
 class RSAManager:
@@ -63,7 +71,7 @@ class RSAManager:
         if self.public_key is None:
             raise ValueError("Public key is not available for encryption.")
 
-        ciphertext = self.public_key.encrypt(
+        return self.public_key.encrypt(
             data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -71,7 +79,6 @@ class RSAManager:
                 label=None,
             ),
         )
-        return ciphertext
 
     def decrypt(self, data: bytes) -> bytes:
         """Decrypt data with the stored private key using OAEP with MGF1 (SHA-256).
@@ -88,7 +95,7 @@ class RSAManager:
         if self.private_key is None:
             raise ValueError("Private key is not available for decryption.")
 
-        plaintext = self.private_key.decrypt(
+        return self.private_key.decrypt(
             data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -96,7 +103,6 @@ class RSAManager:
                 label=None,
             ),
         )
-        return plaintext
 
     def save_private_key(self, filepath: str, password: Optional[bytes] = None) -> None:
         """Save the RSA private key to a PEM file.
@@ -107,7 +113,7 @@ class RSAManager:
 
         Raises:
             ValueError: If the private key is not set.
-            OSError: If there's an error writing to the file.
+            RSAManagerError: If there's an error writing to the file.
         """
         if self.private_key is None:
             raise ValueError("No private key to save.")
@@ -124,8 +130,14 @@ class RSAManager:
             encryption_algorithm=encryption_algorithm,
         )
 
-        with open(filepath, "wb") as file:
-            file.write(pem_data)
+        try:
+            with open(filepath, "wb") as file:
+                file.write(pem_data)
+        except OSError as e:
+            logger.exception("Failed to save private key to file.")
+            raise RSAManagerError(
+                f"Failed to save private key to '{filepath}'. Search for 'RSAManagerError' logs."
+            ) from e
 
     def load_private_key(self, filepath: str, password: Optional[bytes] = None) -> None:
         """Load an RSA private key from a PEM file.
@@ -136,12 +148,24 @@ class RSAManager:
 
         Raises:
             ValueError: If the loaded key is not a valid RSA private key.
-            OSError: If there's an error reading from the file.
+            RSAManagerError: If there's an error reading from the file.
         """
-        with open(filepath, "rb") as file:
-            pem_data = file.read()
+        try:
+            with open(filepath, "rb") as file:
+                pem_data = file.read()
+        except OSError as e:
+            logger.exception("Failed to load private key from file.")
+            raise RSAManagerError(
+                f"Failed to load private key from '{filepath}'. Search for 'RSAManagerError' logs."
+            ) from e
 
-        private_key = serialization.load_pem_private_key(pem_data, password=password)
+        try:
+            private_key = serialization.load_pem_private_key(
+                pem_data, password=password
+            )
+        except Exception as e:
+            logger.exception("Failed to deserialize private key.")
+            raise ValueError("Loaded key is not a valid RSA private key.") from e
 
         if not isinstance(private_key, rsa.RSAPrivateKey):
             raise ValueError("Loaded key is not a valid RSA private key.")
@@ -157,7 +181,7 @@ class RSAManager:
 
         Raises:
             ValueError: If the public key is not set.
-            OSError: If there's an error writing to the file.
+            RSAManagerError: If there's an error writing to the file.
         """
         if self.public_key is None:
             raise ValueError("No public key to save.")
@@ -167,8 +191,14 @@ class RSAManager:
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         )
 
-        with open(filepath, "wb") as file:
-            file.write(pem_data)
+        try:
+            with open(filepath, "wb") as file:
+                file.write(pem_data)
+        except OSError as e:
+            logger.exception("Failed to save public key to file.")
+            raise RSAManagerError(
+                f"Failed to save public key to '{filepath}'. Search for 'RSAManagerError' logs."
+            ) from e
 
     def load_public_key(self, filepath: str) -> None:
         """Load an RSA public key from a PEM file.
@@ -178,12 +208,22 @@ class RSAManager:
 
         Raises:
             ValueError: If the loaded key is not a valid RSA public key.
-            OSError: If there's an error reading from the file.
+            RSAManagerError: If there's an error reading from the file.
         """
-        with open(filepath, "rb") as file:
-            pem_data = file.read()
+        try:
+            with open(filepath, "rb") as file:
+                pem_data = file.read()
+        except OSError as e:
+            logger.exception("Failed to load public key from file.")
+            raise RSAManagerError(
+                f"Failed to load public key from '{filepath}'. Search for 'RSAManagerError' logs."
+            ) from e
 
-        public_key = serialization.load_pem_public_key(pem_data)
+        try:
+            public_key = serialization.load_pem_public_key(pem_data)
+        except Exception as e:
+            logger.exception("Failed to deserialize public key.")
+            raise ValueError("Loaded key is not a valid RSA public key.") from e
 
         if not isinstance(public_key, rsa.RSAPublicKey):
             raise ValueError("Loaded key is not a valid RSA public key.")
