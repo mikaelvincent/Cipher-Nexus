@@ -3,8 +3,9 @@
 This module provides an XOR-based cipher for byte data. Each byte in the key is XORed with the corresponding plaintext byte to encrypt. For decryption, the same operation is applied again since XOR is its own inverse.
 """
 
-import secrets
 from typing import Optional
+
+from src.utils.common import generate_random_bytes
 
 
 class VernamCipher:
@@ -24,23 +25,11 @@ class VernamCipher:
             ValueError: If the provided key is empty.
         """
         if key is None:
-            self.key = self._generate_random_key()
+            self.key = generate_random_bytes(16)
         else:
             if len(key) == 0:
                 raise ValueError("Key must not be empty.")
             self.key = key
-
-    @staticmethod
-    def _generate_random_key(length: int = 16) -> bytes:
-        """Generate a random key of the given length.
-
-        Args:
-            length: The number of bytes in the generated key. Defaults to 16.
-
-        Returns:
-            A bytes object containing random data of the specified length.
-        """
-        return secrets.token_bytes(length)
 
     def encrypt(self, plaintext: bytes) -> bytes:
         """Encrypt the given plaintext by XORing each byte with the key.
