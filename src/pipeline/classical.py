@@ -5,15 +5,19 @@ This module exports two main functions:
 - encrypt_classical(plaintext: bytes) -> (ciphertext: bytes, cipher_params: dict)
 - decrypt_classical(ciphertext: bytes, cipher_params: dict) -> plaintext: bytes
 
-It applies or reverses multiple classical ciphers in sequence:
-
+Sequence of ciphers (for encryption):
 1. Transposition
 2. Monoalphabetic
 3. Polyalphabetic
 4. Vigenere
 5. Vernam
 
-The returned cipher_params dictionary includes necessary keys/passphrases to reconstruct the decryption in the reverse order.
+Usage Example:
+    >>> from src.pipeline.classical import encrypt_classical, decrypt_classical
+    >>> data = b"Hello World"
+    >>> ciphertext, params = encrypt_classical(data)
+    >>> recovered = decrypt_classical(ciphertext, params)
+    >>> assert recovered == data
 """
 
 from __future__ import annotations
@@ -32,17 +36,21 @@ def encrypt_classical(
 ) -> tuple[bytes, dict[str, Union[bytes, int, str]]]:
     """Encrypt the plaintext bytes using multiple classical ciphers in sequence.
 
-    1. Transposition
-    2. Monoalphabetic
-    3. Polyalphabetic
-    4. Vigenere
-    5. Vernam
+    Order of ciphers:
+        1. Transposition
+        2. Monoalphabetic
+        3. Polyalphabetic
+        4. Vigenere
+        5. Vernam
 
     Args:
         plaintext: The data to be encrypted (in memory).
 
     Returns:
         A tuple of (ciphertext, cipher_params).
+
+    Raises:
+        ValueError: If any underlying cipher encounters invalid parameters.
     """
     # Instantiate ciphers with random parameters
     mono = MonoalphabeticCipher()
@@ -75,11 +83,12 @@ def decrypt_classical(
 ) -> bytes:
     """Decrypt the ciphertext bytes using the reverse order of classical ciphers.
 
-    1. Vernam
-    2. Vigenere
-    3. Polyalphabetic
-    4. Monoalphabetic
-    5. Transposition
+    Order of ciphers:
+        1. Vernam
+        2. Vigenere
+        3. Polyalphabetic
+        4. Monoalphabetic
+        5. Transposition
 
     Args:
         ciphertext: The data to be decrypted.
@@ -87,13 +96,10 @@ def decrypt_classical(
 
     Returns:
         The fully decrypted plaintext bytes.
-    """
-    from src.ciphers.monoalphabetic import MonoalphabeticCipher
-    from src.ciphers.polyalphabetic import PolyalphabeticCipher
-    from src.ciphers.transposition import TranspositionCipher
-    from src.ciphers.vigenere import VigenereCipher
-    from src.ciphers.vernam import VernamCipher
 
+    Raises:
+        ValueError: If any underlying cipher's parameters are invalid.
+    """
     mono = MonoalphabeticCipher(key=cipher_params["mono_key"])  # type: ignore
     poly = PolyalphabeticCipher(key=cipher_params["poly_key"])  # type: ignore
     trans = TranspositionCipher(columns=cipher_params["trans_columns"])  # type: ignore
