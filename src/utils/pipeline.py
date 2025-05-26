@@ -1,15 +1,15 @@
 """High-level encryption/decryption pipeline using layered classical ciphers and RSA.
 
 This module centralizes the logic to:
-1. Read a plaintext or ciphertext file.
-2. Apply or reverse multiple classical ciphers.
+1. Read a plaintext or ciphertext file in chunks.
+2. Apply or reverse multiple classical ciphers in memory.
 3. Encrypt or decrypt the cipher parameters with RSA, leveraging a hybrid AES + RSA approach.
-4. Write or read the resulting data to/from an output file.
+4. Write or read the resulting data to/from an output file in chunks.
 """
 
 import pickle
 import secrets
-from typing import Dict, Any
+from typing import Dict, Any, Generator
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -20,30 +20,32 @@ from src.ciphers.vigenere import VigenereCipher
 from src.ciphers.vernam import VernamCipher
 from src.crypto.rsa_manager import RSAManager
 from src.crypto.hashing import sha256_hash_data
+from src.utils.file_io import read_file_in_chunks, write_file_in_chunks
+from src.utils.constants import AES_KEY_SIZE, GCM_IV_SIZE, LENGTH_HEADER_SIZE
+
+
+def _byte_chunker(data: bytes, chunk_size: int = 4096) -> Generator[bytes, None, None]:
+    """Yield chunks from a bytes object."""
+    for i in range(0, len(data), chunk_size):
+        yield data[i : i + chunk_size]
 
 
 def encrypt_file(input_path: str, output_path: str, public_key_path: str) -> None:
     """Encrypt a file using layered classical ciphers and RSA-based hybrid encryption.
 
-    This function performs the following steps:
-    1. Reads the plaintext from the input file.
-    2. Encrypts the plaintext with multiple classical ciphers in sequence.
-    3. Gathers all cipher parameters (keys, passphrases, etc.) plus a SHA-256 hash of the original file into a dictionary.
-    4. Serializes the dictionary and encrypts it with AES-GCM (using a random key and IV).
-    5. Encrypts the small AES key/IV/tag bundle with RSA-OAEP using the provided public key (hybrid approach).
-    6. Writes the output file in the order: [RSA length][RSA data][AES length][AES data][ciphertext].
-
-    Args:
-        input_path: Path to the plaintext file.
-        output_path: Path for writing the output ciphertext file.
-        public_key_path: Path to the RSA public key (PEM file).
-
-    Raises:
-        ValueError: If encryption fails due to invalid or missing parameters.
-        OSError: If reading/writing files fails.
+    Steps:
+    1. Read the plaintext from the input file in chunks, accumulate in memory.
+    2. Encrypt the plaintext with multiple classical ciphers in sequence.
+    3. Gather cipher parameters + a SHA-256 hash of the original file into a dictionary.
+    4. Serialize the dictionary and encrypt it with AES-GCM (using a random key/IV).
+    5. Encrypt the small AES key/IV/tag bundle with RSA-OAEP (hybrid approach).
+    6. Write the output file in chunks:
+       [4-byte length of RSA data][RSA data][4-byte length of AES params][AES params][final ciphertext].
     """
-    with open(input_path, "rb") as f_in:
-        plaintext = f_in.read()
+    # Read entire plaintext in memory (still chunked from disk)
+    plaintext = bytearray()
+    for chunk in read_file_in_chunks(input_path):
+        plaintext.extend(chunk)
 
     # Instantiate ciphers with random parameters
     mono = MonoalphabeticCipher()
@@ -52,7 +54,7 @@ def encrypt_file(input_path: str, output_path: str, public_key_path: str) -> Non
     vig = VigenereCipher()
     ver = VernamCipher()
 
-    # Layered classical cipher encryption
+    # Layered classical cipher encryption in memory
     data = trans.encrypt(plaintext)
     data = mono.encrypt(data)
     data = poly.encrypt(data)
@@ -71,8 +73,8 @@ def encrypt_file(input_path: str, output_path: str, public_key_path: str) -> Non
     param_bytes = pickle.dumps(cipher_params)
 
     # Hybrid AES+RSA encryption for cipher parameters
-    aes_key = secrets.token_bytes(32)  # 256-bit AES key
-    aes_iv = secrets.token_bytes(12)  # 12-byte IV for AES-GCM
+    aes_key = secrets.token_bytes(AES_KEY_SIZE)
+    aes_iv = secrets.token_bytes(GCM_IV_SIZE)
 
     aes_cipher = Cipher(algorithms.AES(aes_key), modes.GCM(aes_iv))
     encryptor = aes_cipher.encryptor()
@@ -87,53 +89,63 @@ def encrypt_file(input_path: str, output_path: str, public_key_path: str) -> Non
     rsa_mgr.load_public_key(public_key_path)
     ephemeral_data_encrypted = rsa_mgr.encrypt(ephemeral_data)
 
-    # Write output file: RSA data first, then AES-encrypted parameters, then final ciphertext
-    with open(output_path, "wb") as f_out:
-        f_out.write(len(ephemeral_data_encrypted).to_bytes(4, "big"))
-        f_out.write(ephemeral_data_encrypted)
+    # Prepare final output as a single byte buffer
+    header_1 = len(ephemeral_data_encrypted).to_bytes(LENGTH_HEADER_SIZE, "big")
+    header_2 = len(param_ciphertext).to_bytes(LENGTH_HEADER_SIZE, "big")
 
-        f_out.write(len(param_ciphertext).to_bytes(4, "big"))
-        f_out.write(param_ciphertext)
+    final_output = (
+        header_1 + ephemeral_data_encrypted + header_2 + param_ciphertext + data
+    )
 
-        f_out.write(data)
+    # Write output in chunks
+    write_file_in_chunks(output_path, _byte_chunker(final_output))
 
 
 def decrypt_file(input_path: str, output_path: str, private_key_path: str) -> None:
     """Decrypt a file using layered classical ciphers and RSA-based hybrid decryption.
 
-    This function reverses the process used by encrypt_file:
-    1. Reads and RSA-decrypts the ephemeral AES key/IV/tag from the input file using the provided private key.
-    2. Reconstructs the AES-GCM context to decrypt the serialized cipher parameters.
-    3. Restores the classical cipher parameters (keys, passphrases, etc.).
-    4. Decrypts the final ciphertext using the classical ciphers in reverse order.
-    5. Verifies the SHA-256 hash of the resulting data matches the stored value, printing a warning if it does not.
-
-    Args:
-        input_path: Path to the ciphertext file to be decrypted.
-        output_path: Path for writing the decrypted plaintext file.
-        private_key_path: Path to the RSA private key (PEM file).
-
-    Raises:
-        ValueError: If decryption fails due to invalid or missing parameters.
-        OSError: If reading/writing files fails.
+    Reverses encrypt_file steps:
+    1. Read and parse the RSA-encrypted data length & data, AES-encrypted parameters length & data, and final ciphertext.
+    2. RSA-decrypt ephemeral AES key/IV/tag, reconstruct AES-GCM to decrypt cipher parameters.
+    3. Rebuild classical ciphers with extracted parameters, then decrypt final ciphertext.
+    4. Verify SHA-256 hash of the result.
+    5. Write plaintext to disk in chunks.
     """
-    with open(input_path, "rb") as f_in:
-        ephemeral_len = int.from_bytes(f_in.read(4), "big")
-        ephemeral_data_encrypted = f_in.read(ephemeral_len)
+    # Read all data in memory, but originally chunked from disk
+    file_contents = bytearray()
+    for chunk in read_file_in_chunks(input_path):
+        file_contents.extend(chunk)
 
-        param_len = int.from_bytes(f_in.read(4), "big")
-        param_ciphertext = f_in.read(param_len)
+    # Parse the first 4 bytes for RSA data length
+    cursor = 0
+    ephemeral_len = int.from_bytes(file_contents[cursor : cursor + 4], "big")
+    cursor += 4
 
-        ciphertext = f_in.read()
+    # Next ephemeral_len bytes are the RSA-encrypted ephemeral data
+    ephemeral_data_encrypted = file_contents[cursor : cursor + ephemeral_len]
+    cursor += ephemeral_len
+
+    # Next 4 bytes for param ciphertext length
+    param_len = int.from_bytes(file_contents[cursor : cursor + 4], "big")
+    cursor += 4
+
+    # Next param_len bytes for AES-encrypted cipher parameters
+    param_ciphertext = file_contents[cursor : cursor + param_len]
+    cursor += param_len
+
+    # Remaining bytes are the final layered ciphertext
+    ciphertext = file_contents[cursor:]
 
     # RSA decryption to recover the AES key, IV, and tag
     rsa_mgr = RSAManager()
     rsa_mgr.load_private_key(private_key_path)
     ephemeral_data = rsa_mgr.decrypt(ephemeral_data_encrypted)
 
-    aes_key = ephemeral_data[:32]
-    aes_iv = ephemeral_data[32:44]
-    param_tag = ephemeral_data[44:]
+    # Separate AES key, IV, and GCM tag
+    # AES_KEY_SIZE = 32, GCM_IV_SIZE = 12
+    aes_key = ephemeral_data[:AES_KEY_SIZE]
+    aes_iv = ephemeral_data[AES_KEY_SIZE : AES_KEY_SIZE + GCM_IV_SIZE]
+    param_tag = ephemeral_data[AES_KEY_SIZE + GCM_IV_SIZE :]
 
     # AES-GCM decryption for the cipher parameters
     aes_cipher = Cipher(algorithms.AES(aes_key), modes.GCM(aes_iv, param_tag))
@@ -164,5 +176,5 @@ def decrypt_file(input_path: str, output_path: str, private_key_path: str) -> No
     else:
         print("File integrity verified (SHA-256).")
 
-    with open(output_path, "wb") as f_out:
-        f_out.write(data)
+    # Write final plaintext in chunks
+    write_file_in_chunks(output_path, _byte_chunker(data))
