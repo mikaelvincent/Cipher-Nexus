@@ -3,12 +3,15 @@
 This module provides a repeated-shift cipher for byte data. Each byte of the key determines the shift for the corresponding plaintext byte, cycling through the key as needed.
 """
 
+from __future__ import annotations
 from typing import Optional
 
+from src.ciphers.cipher_base import CipherBase
+from src.ciphers._stream_cipher_utils import repeated_add_mod_256, repeated_sub_mod_256
 from src.utils.common import generate_random_bytes
 
 
-class PolyalphabeticCipher:
+class PolyalphabeticCipher(CipherBase):
     """A polyalphabetic cipher that applies a repeated shift to each byte.
 
     Each byte in the key is added (mod 256) to the corresponding plaintext byte to encrypt. For decryption, the key byte is subtracted (mod 256).
@@ -42,12 +45,7 @@ class PolyalphabeticCipher:
         Returns:
             The encrypted data as bytes.
         """
-        ciphertext = bytearray(len(plaintext))
-        key_length = len(self.key)
-        for i, byte_val in enumerate(plaintext):
-            shift = self.key[i % key_length]
-            ciphertext[i] = (byte_val + shift) % 256
-        return bytes(ciphertext)
+        return repeated_add_mod_256(plaintext, self.key)
 
     def decrypt(self, ciphertext: bytes) -> bytes:
         """Decrypt the given ciphertext by reversing the repeated shift.
@@ -58,9 +56,4 @@ class PolyalphabeticCipher:
         Returns:
             The decrypted data as bytes.
         """
-        plaintext = bytearray(len(ciphertext))
-        key_length = len(self.key)
-        for i, byte_val in enumerate(ciphertext):
-            shift = self.key[i % key_length]
-            plaintext[i] = (byte_val - shift) % 256
-        return bytes(plaintext)
+        return repeated_sub_mod_256(ciphertext, self.key)
