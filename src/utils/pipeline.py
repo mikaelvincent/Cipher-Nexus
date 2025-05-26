@@ -122,7 +122,7 @@ def decrypt_file(input_path: str, output_path: str, private_key_path: str) -> No
     cursor += 4
 
     # Next ephemeral_len bytes are the RSA-encrypted ephemeral data
-    ephemeral_data_encrypted = file_contents[cursor : cursor + ephemeral_len]
+    ephemeral_data_encrypted = bytes(file_contents[cursor : cursor + ephemeral_len])
     cursor += ephemeral_len
 
     # Next 4 bytes for param ciphertext length
@@ -130,11 +130,11 @@ def decrypt_file(input_path: str, output_path: str, private_key_path: str) -> No
     cursor += 4
 
     # Next param_len bytes for AES-encrypted cipher parameters
-    param_ciphertext = file_contents[cursor : cursor + param_len]
+    param_ciphertext = bytes(file_contents[cursor : cursor + param_len])
     cursor += param_len
 
     # Remaining bytes are the final layered ciphertext
-    ciphertext = file_contents[cursor:]
+    ciphertext = bytes(file_contents[cursor:])
 
     # RSA decryption to recover the AES key, IV, and tag
     rsa_mgr = RSAManager()
