@@ -8,8 +8,8 @@ import unittest
 import tempfile
 import secrets
 
-from src.crypto.rsa_manager import RSAManager
 from src.utils.pipeline import encrypt_file, decrypt_file
+from tests.helpers.rsa_test_helpers import generate_rsa_key_pair_and_save
 
 
 class TestEndToEnd(unittest.TestCase):
@@ -19,14 +19,7 @@ class TestEndToEnd(unittest.TestCase):
         """Encrypt and decrypt a small plaintext, verifying the output matches the original."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Generate random RSA key pair
-            rsa_mgr = RSAManager()
-            rsa_mgr.generate_key_pair(key_size=2048)
-
-            # Save public and private keys
-            pub_key_path = os.path.join(temp_dir, "public_key.pem")
-            priv_key_path = os.path.join(temp_dir, "private_key.pem")
-            rsa_mgr.save_public_key(pub_key_path)
-            rsa_mgr.save_private_key(priv_key_path)
+            pub_key_path, priv_key_path = generate_rsa_key_pair_and_save(temp_dir, 2048)
 
             # Create a small plaintext file
             plaintext_data = b"Hello, Cipher Nexus!"
@@ -54,14 +47,7 @@ class TestEndToEnd(unittest.TestCase):
         """Encrypt and decrypt random binary data, verifying the output matches."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Generate random RSA key pair
-            rsa_mgr = RSAManager()
-            rsa_mgr.generate_key_pair(key_size=2048)
-
-            # Save public and private keys
-            pub_key_path = os.path.join(temp_dir, "public_key.pem")
-            priv_key_path = os.path.join(temp_dir, "private_key.pem")
-            rsa_mgr.save_public_key(pub_key_path)
-            rsa_mgr.save_private_key(priv_key_path)
+            pub_key_path, priv_key_path = generate_rsa_key_pair_and_save(temp_dir, 2048)
 
             # Create random binary data
             plaintext_data = secrets.token_bytes(1024)  # 1 KB of random data
