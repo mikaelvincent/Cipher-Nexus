@@ -3,12 +3,14 @@
 This module provides a classical Vigenere cipher for text-based shifts keyed by a passphrase. Only alphabetic characters (A to Z, a to z) are shifted; other bytes remain unchanged.
 """
 
+from __future__ import annotations
 from typing import Optional
 
+from src.ciphers.cipher_base import CipherBase
 from src.utils.common import generate_random_passphrase
 
 
-class VigenereCipher:
+class VigenereCipher(CipherBase):
     """A classical Vigenere cipher that shifts letters by passphrase-based offsets.
 
     Only A to Z and a to z are shifted. Non-alphabetic characters are left as is. The passphrase is repeated across the length of the plaintext or ciphertext.
@@ -46,7 +48,7 @@ class VigenereCipher:
             passphrase: The passphrase string.
 
         Returns:
-            A list of integer shift values (0-25) corresponding to each character in the passphrase.
+            A list of integer shift values (0-25) corresponding to each character.
         """
         shifts = []
         for ch in passphrase:
