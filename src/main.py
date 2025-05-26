@@ -38,6 +38,7 @@ def main() -> None:
         except Exception as exc:
             logger.exception("Encryption failed.")
             print(f"Encryption failed: {exc}")
+            sys.exit(1)
 
     elif cmd == "decrypt" and len(sys.argv) == 5:
         input_path = sys.argv[2]
@@ -50,6 +51,7 @@ def main() -> None:
         except Exception as exc:
             logger.exception("Decryption failed.")
             print(f"Decryption failed: {exc}")
+            sys.exit(1)
 
     elif cmd == "genkey" and len(sys.argv) in (4, 5):
         private_key_path = sys.argv[2]
@@ -59,7 +61,7 @@ def main() -> None:
                 key_size = int(sys.argv[4])
             except ValueError:
                 print("Invalid key size specified. Must be an integer.")
-                return
+                sys.exit(1)
         else:
             key_size = 2048  # Default
 
@@ -76,12 +78,14 @@ def main() -> None:
         except Exception as exc:
             logger.exception("Key generation failed.")
             print(f"Key generation failed: {exc}")
+            sys.exit(1)
 
     else:
         print("Usage:")
         print("  python main.py encrypt <input> <output> <public_key.pem>")
         print("  python main.py decrypt <input> <output> <private_key.pem>")
         print("  python main.py genkey <private_key.pem> <public_key.pem> [<key_size>]")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
