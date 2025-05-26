@@ -1,6 +1,6 @@
 """GUI for the Cipher Nexus project using Tkinter.
 
-This module defines a simple interface for selecting input, output, and key files, generating RSA keys, and performing encryption or decryption. The RSA key file (PEM) can be either a public key (for encryption) or a private key (for decryption).
+This module defines a simple interface for selecting input, output, and key files, generating RSA keys, and performing file-level encryption or decryption by calling the pipeline.io helpers.
 """
 
 import logging
@@ -8,15 +8,10 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from typing import Optional
 
-from src.utils.classical_pipeline import (
-    encrypt_classical,
-    decrypt_classical,
-    write_data,
-)
-from src.utils.hybrid_crypto import envelope_encrypt_params, envelope_decrypt_params
-from src.crypto.hashing import sha256_hash_data
+from src.pipeline.io import encrypt_file, decrypt_file
 from src.crypto.rsa_manager import RSAManager
 from src.utils.file_io import read_file_in_chunks
+from src.crypto.hashing import sha256_hash_data
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +42,6 @@ class CipherNexusGUI(tk.Frame):
 
     def _create_widgets(self) -> None:
         """Create the layout of labels, buttons, and entry fields for file selection."""
-
         # ------------------------------
         # Row 0: Input file
         # ------------------------------
@@ -142,7 +136,7 @@ class CipherNexusGUI(tk.Frame):
             self.entry_key.insert(0, path)
 
     def _encrypt_file(self) -> None:
-        """Perform encryption using the classical pipeline plus RSA envelope."""
+        """Perform encryption by calling the pipeline.io module."""
         input_path = self.entry_input.get()
         output_path = self.entry_output.get()
         key_path = self.entry_key.get()
@@ -152,34 +146,7 @@ class CipherNexusGUI(tk.Frame):
             return
 
         try:
-            # Run classical encryption
-            ciphertext, cipher_params = encrypt_classical(input_path)
-
-            # Compute file hash for integrity
-            plaintext_hash = sha256_hash_data(_read_entire_file(input_path))
-            cipher_params["sha256"] = plaintext_hash
-
-            # Envelope-encrypt the cipher params with RSA + AES-GCM
-            ephemeral_data_enc, param_ciphertext, param_tag = envelope_encrypt_params(
-                cipher_params, key_path
-            )
-
-            # Build final output structure:
-            # [4-byte length of ephemeral_data_enc][ephemeral_data_enc]
-            # [4-byte length of param_ciphertext][param_ciphertext]
-            # [ciphertext]
-            from src.utils.constants import LENGTH_HEADER_SIZE
-
-            header_1 = len(ephemeral_data_enc).to_bytes(LENGTH_HEADER_SIZE, "big")
-            header_2 = len(param_ciphertext).to_bytes(LENGTH_HEADER_SIZE, "big")
-
-            final_output = (
-                header_1 + ephemeral_data_enc + header_2 + param_ciphertext + ciphertext
-            )
-
-            # Write output
-            write_data(output_path, final_output)
-
+            encrypt_file(input_path, output_path, key_path)
             self.status_label.config(text="Encryption complete.")
             self.status_label.grid()
         except Exception as exc:
@@ -187,7 +154,7 @@ class CipherNexusGUI(tk.Frame):
             messagebox.showerror("Error", f"Encryption failed: {exc}")
 
     def _decrypt_file(self) -> None:
-        """Perform decryption using the classical pipeline plus RSA envelope."""
+        """Perform decryption by calling the pipeline.io module."""
         input_path = self.entry_input.get()
         output_path = self.entry_output.get()
         key_path = self.entry_key.get()
@@ -197,62 +164,7 @@ class CipherNexusGUI(tk.Frame):
             return
 
         try:
-            file_data = b"".join(read_file_in_chunks(input_path))
-
-            from src.utils.constants import LENGTH_HEADER_SIZE
-
-            # 1) Extract ephemeral_data_enc
-            cursor = 0
-            ephemeral_len = int.from_bytes(
-                file_data[cursor : cursor + LENGTH_HEADER_SIZE], "big"
-            )
-            cursor += LENGTH_HEADER_SIZE
-            ephemeral_data_enc = file_data[cursor : cursor + ephemeral_len]
-            cursor += ephemeral_len
-
-            # 2) Extract param_ciphertext
-            param_len = int.from_bytes(
-                file_data[cursor : cursor + LENGTH_HEADER_SIZE], "big"
-            )
-            cursor += LENGTH_HEADER_SIZE
-            param_ciphertext = file_data[cursor : cursor + param_len]
-            cursor += param_len
-
-            # 3) Remaining bytes = ciphertext
-            ciphertext = file_data[cursor:]
-
-            # Decrypt cipher params
-            from src.crypto.rsa_manager import RSAManager
-
-            rsa_mgr = RSAManager()
-            rsa_mgr.load_private_key(key_path)
-            ephemeral_data = rsa_mgr.decrypt(ephemeral_data_enc)
-
-            from src.utils.constants import AES_KEY_SIZE, GCM_IV_SIZE
-
-            param_tag = ephemeral_data[AES_KEY_SIZE + GCM_IV_SIZE :]
-
-            from src.utils.hybrid_crypto import envelope_decrypt_params
-
-            cipher_params = envelope_decrypt_params(
-                ephemeral_data_enc, param_ciphertext, param_tag, key_path
-            )
-
-            from src.utils.classical_pipeline import decrypt_classical
-
-            plaintext = decrypt_classical(ciphertext, cipher_params)
-
-            # Verify integrity
-            old_hash = cipher_params["sha256"]
-            new_hash = sha256_hash_data(plaintext)
-
-            if new_hash != old_hash:
-                raise ValueError("SHA-256 mismatch: possible corruption or tampering.")
-
-            from src.utils.classical_pipeline import write_data
-
-            write_data(output_path, plaintext)
-
+            decrypt_file(input_path, output_path, key_path)
             self.status_label.config(text="Decryption complete.")
             self.status_label.grid()
         except Exception as exc:
@@ -275,10 +187,7 @@ class CipherNexusGUI(tk.Frame):
         if not pub_path:
             return
 
-        # Ask for key size (simple prompt)
-        # If you want a more advanced dialog, create a top-level window. For brevity, use an input dialog.
-        # Here, we’ll use a default or a simple prompt. If user cancels, use default 2048.
-
+        # Ask for key size
         key_size = 2048
         answer = messagebox.askquestion(
             "Key Size",
@@ -286,12 +195,12 @@ class CipherNexusGUI(tk.Frame):
             "Click 'Yes' to proceed with 2048 bits, or 'No' to enter a custom size.",
         )
         if answer == "no":
-            # Simple approach: ask the user for a numeric input in a new dialog
-            size_str = tk.simpledialog.askstring(
+            import tkinter.simpledialog as simpledialog
+
+            size_str = simpledialog.askstring(
                 "Custom Key Size", "Enter key size in bits (e.g., 2048, 3072, 4096):"
             )
             if size_str is None:
-                # User canceled, revert to default
                 key_size = 2048
             else:
                 try:
@@ -320,11 +229,3 @@ class CipherNexusGUI(tk.Frame):
         except Exception as exc:
             logger.exception("Key generation failed.")
             messagebox.showerror("Error", f"Key generation failed: {exc}")
-
-
-def _read_entire_file(filepath: str) -> bytes:
-    """Helper to read an entire file into memory."""
-    data = bytearray()
-    for chunk in read_file_in_chunks(filepath):
-        data.extend(chunk)
-    return bytes(data)
