@@ -1,6 +1,10 @@
 """RSA key management using the cryptography library.
 
-This module provides functionality to generate RSA key pairs, encrypt data with a public key, and decrypt data with a private key. Keys can also be saved to and loaded from PEM files. By default, the keys use 2048-bit RSA and OAEP (SHA-256) padding.
+This module provides functionality to:
+1. Generate RSA key pairs
+2. Encrypt data with a public key
+3. Decrypt data with a private key
+4. Save/load keys in PEM files (optionally password-protected)
 """
 
 from __future__ import annotations
@@ -27,8 +31,8 @@ class RSAManager:
     4. Saving and loading keys in PEM format
 
     Attributes:
-        private_key: An optional RSA private key.
-        public_key: An optional RSA public key.
+        private_key: An optional RSA private key object.
+        public_key: An optional RSA public key object.
     """
 
     def __init__(
