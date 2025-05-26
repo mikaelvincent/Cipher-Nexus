@@ -1,19 +1,21 @@
-"""File-level operations that combine classical encryption/decryption with RSA + AES-GCM.
+"""File-level operations combining classical encryption/decryption with RSA + AES-GCM.
 
 Provides high-level functions:
     encrypt_file(input_path, output_path, public_key_path)
     decrypt_file(input_path, output_path, private_key_path)
 
-These functions:
+Usage Example:
+    >>> from src.pipeline.io import encrypt_file, decrypt_file
+    >>> encrypt_file("mydoc.txt", "mydoc.enc", "public_key.pem")
+    >>> decrypt_file("mydoc.enc", "mydoc_decrypted.txt", "private_key.pem")
+
+Steps:
 1. Read the entire input file into memory.
-2. Run the classical pipeline (encrypt_classical / decrypt_classical).
+2. Run the classical pipeline (encrypt_classical or decrypt_classical).
 3. Envelope-encrypt or decrypt the cipher parameters (RSA + AES-GCM).
 4. Construct/parse the final output structure with ephemeral data.
 5. Write or restore the final file data.
-
-Integrity verification:
-    - A SHA-256 hash of the original plaintext is stored in cipher_params["sha256"]
-    - Verified upon decryption
+6. A SHA-256 hash in cipher_params["sha256"] verifies integrity upon decryption.
 """
 
 from __future__ import annotations
@@ -33,8 +35,7 @@ logger = logging.getLogger(__name__)
 def encrypt_file(input_path: str, output_path: str, public_key_path: str) -> None:
     """Encrypt the file at input_path and write the result to output_path.
 
-    The classical pipeline is used first, then the resulting cipher_params
-    are envelope-encrypted using RSA (public_key_path) plus an ephemeral AES-GCM.
+    The classical pipeline is used first, then the resulting cipher_params are envelope-encrypted using RSA (public_key_path) plus an ephemeral AES-GCM.
 
     Args:
         input_path: Path to the plaintext file.
@@ -42,7 +43,8 @@ def encrypt_file(input_path: str, output_path: str, public_key_path: str) -> Non
         public_key_path: Path to the RSA public key (PEM).
 
     Raises:
-        Any IO or encryption-related exceptions on failure.
+        OSError: If reading or writing files fails.
+        ValueError: If encryption steps or key usage fail.
     """
     # 1. Read entire file
     plaintext = read_entire_file(input_path)
@@ -74,8 +76,7 @@ def encrypt_file(input_path: str, output_path: str, public_key_path: str) -> Non
 def decrypt_file(input_path: str, output_path: str, private_key_path: str) -> None:
     """Decrypt a file produced by encrypt_file and restore original data.
 
-    The final output structure is parsed to extract ephemeral data, param ciphertext,
-    and the actual classical ciphertext. Then the classical pipeline is reversed.
+    The final output structure is parsed to extract ephemeral data, param ciphertext, and the classical ciphertext. Then the classical pipeline is reversed.
 
     A SHA-256 check ensures integrity of the recovered plaintext.
 
@@ -85,8 +86,8 @@ def decrypt_file(input_path: str, output_path: str, private_key_path: str) -> No
         private_key_path: Path to the RSA private key (PEM).
 
     Raises:
+        OSError: If reading or writing files fails.
         ValueError: If an integrity check fails or keys are invalid.
-        Any IO or decryption-related exceptions on failure.
     """
     # 1. Read entire file
     file_data = read_entire_file(input_path)
@@ -135,6 +136,14 @@ def decrypt_file(input_path: str, output_path: str, private_key_path: str) -> No
 
 
 def _in_chunks(data: bytes, chunk_size: int = 4096):
-    """Generator that yields the data in chunks of chunk_size."""
+    """Generator that yields the data in chunks of chunk_size.
+
+    Args:
+        data: The bytes to be chunked.
+        chunk_size: Number of bytes per chunk.
+
+    Yields:
+        Subsets of 'data' of length up to chunk_size.
+    """
     for i in range(0, len(data), chunk_size):
         yield data[i : i + chunk_size]
