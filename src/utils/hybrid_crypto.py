@@ -31,7 +31,7 @@ def envelope_encrypt_params(
 
     Returns:
         A tuple (ephemeral_data_encrypted, param_ciphertext, param_tag),
-        where ephemeral_data_encrypted is the RSA-encrypted AES key + IV,
+        where ephemeral_data_encrypted is the RSA-encrypted AES key + IV + tag,
         and param_ciphertext is the AES-GCM-encrypted cipher_params,
         with param_tag as the GCM authentication tag.
     """
@@ -68,7 +68,7 @@ def envelope_decrypt_params(
     Args:
         ephemeral_data_encrypted: RSA-encrypted data containing AES key + IV + tag.
         param_ciphertext: The AES-GCM-encrypted cipher parameter data.
-        param_tag: The GCM authentication tag, typically the last 16 bytes of ephemeral data.
+        param_tag: The GCM authentication tag (extracted from decrypted ephemeral data).
         rsa_private_key_path: Path to the RSA private key (PEM).
 
     Returns:
@@ -81,12 +81,9 @@ def envelope_decrypt_params(
     rsa_mgr.load_private_key(rsa_private_key_path)
     ephemeral_data = rsa_mgr.decrypt(ephemeral_data_encrypted)
 
-    # Extract AES key, IV, and tag
+    # ephemeral_data should be: aes_key + aes_iv + param_tag
     aes_key = ephemeral_data[:AES_KEY_SIZE]
     aes_iv = ephemeral_data[AES_KEY_SIZE : AES_KEY_SIZE + GCM_IV_SIZE]
-    # param_tag can be derived from ephemeral_data or directly used
-    # We'll trust param_tag from outside as well for clarity
-    # but ephemeral_data also included it - they must match
     embedded_tag = ephemeral_data[AES_KEY_SIZE + GCM_IV_SIZE :]
 
     if embedded_tag != param_tag:

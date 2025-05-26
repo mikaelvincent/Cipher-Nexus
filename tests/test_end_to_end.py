@@ -14,6 +14,7 @@ from src.utils.hybrid_crypto import (
     envelope_decrypt_params,
 )
 from src.crypto.hashing import sha256_hash_data
+from src.crypto.rsa_manager import RSAManager
 from tests.helpers.rsa_test_helpers import generate_rsa_key_pair_and_save
 
 
@@ -36,67 +37,61 @@ class TestEndToEnd(unittest.TestCase):
             encrypted_path = os.path.join(temp_dir, "encrypted.bin")
             decrypted_path = os.path.join(temp_dir, "decrypted.txt")
 
-            # Classical encrypt
+            # Classical encrypt in memory
             ciphertext, cipher_params = encrypt_classical(input_path)
 
-            # Add file hash
+            # Compute and store file hash
             cipher_params["sha256"] = sha256_hash_data(plaintext_data)
 
-            # Envelope encrypt
+            # Envelope encrypt the cipher parameters
             ephemeral_data_enc, param_ciphertext, param_tag = envelope_encrypt_params(
                 cipher_params, pub_key_path
             )
 
-            # Write final structure
+            # Write final structure to the encrypted file:
+            #  [4-byte length of ephemeral_data_enc][ephemeral_data_enc]
+            #  [4-byte length of param_ciphertext][param_ciphertext]
+            #  [ciphertext]
             with open(encrypted_path, "wb") as f_enc:
-                # ephemeral length
                 f_enc.write(len(ephemeral_data_enc).to_bytes(4, "big"))
                 f_enc.write(ephemeral_data_enc)
-
-                # param length
                 f_enc.write(len(param_ciphertext).to_bytes(4, "big"))
                 f_enc.write(param_ciphertext)
-
-                # ciphertext
                 f_enc.write(ciphertext)
 
-            # Read back encrypted
+            # Now read back the encrypted file and parse the sections
             with open(encrypted_path, "rb") as f_enc:
                 full_data = f_enc.read()
 
-            # Parse
             cursor = 0
             ephemeral_len = int.from_bytes(full_data[cursor : cursor + 4], "big")
             cursor += 4
-            ephemeral_data_enc = full_data[cursor : cursor + ephemeral_len]
+            ephemeral_data_encrypted = full_data[cursor : cursor + ephemeral_len]
             cursor += ephemeral_len
             param_len = int.from_bytes(full_data[cursor : cursor + 4], "big")
             cursor += 4
-            param_ciphertext = full_data[cursor : cursor + param_len]
+            param_cipher = full_data[cursor : cursor + param_len]
             cursor += param_len
             extracted_ciphertext = full_data[cursor:]
 
-            # Decrypt ephemeral
-            ephemeral_data = None
-            with open(priv_key_path, "rb"):
-                # Use the param_tag from ephemeral_data after RSA decryption
-                ephemeral_data = envelope_decrypt_params(
-                    ephemeral_data_enc,
-                    param_ciphertext,
-                    ephemeral_data_enc[-16:],  # Not strictly correct, but not used
-                    priv_key_path,
-                )
-            # Actually ephemeral_data is the final dict
-            # but we called the function incorrectly here
-            # We'll do the real approach:
+            # RSA-decrypt ephemeral data to retrieve AES key, IV, and the real GCM tag
+            rsa_mgr = RSAManager()
+            rsa_mgr.load_private_key(priv_key_path)
+            ephemeral_data = rsa_mgr.decrypt(ephemeral_data_encrypted)
+
+            # ephemeral_data = aes_key + aes_iv + param_tag
+            # The tag is the last 16 bytes of ephemeral_data
+            actual_tag = ephemeral_data[-16:]
+
+            # Now properly decrypt the parameters with the correct tag
             cipher_params_decrypted = envelope_decrypt_params(
-                ephemeral_data_enc,
-                param_ciphertext,
-                ephemeral_data_enc[-16:],  # 16 bytes for tag, from ephemeral_data
+                ephemeral_data_encrypted,
+                param_cipher,
+                actual_tag,
                 priv_key_path,
             )
 
-            # Classical decrypt
+            # Classical decrypt the final ciphertext
             recovered_plaintext = decrypt_classical(
                 extracted_ciphertext, cipher_params_decrypted
             )
@@ -128,13 +123,11 @@ class TestEndToEnd(unittest.TestCase):
             with open(encrypted_path, "wb") as f_enc:
                 f_enc.write(len(ephemeral_data_enc).to_bytes(4, "big"))
                 f_enc.write(ephemeral_data_enc)
-
                 f_enc.write(len(param_ciphertext).to_bytes(4, "big"))
                 f_enc.write(param_ciphertext)
-
                 f_enc.write(ciphertext)
 
-            # Envelope decrypt
+            # Now read back
             with open(encrypted_path, "rb") as f_enc:
                 full_data = f_enc.read()
 
@@ -151,16 +144,21 @@ class TestEndToEnd(unittest.TestCase):
 
             final_ciphertext = full_data[cursor:]
 
-            # Actually decrypt
+            # RSA-decrypt ephemeral data so we can confirm the real tag
+            rsa_mgr = RSAManager()
+            rsa_mgr.load_private_key(priv_key_path)
+            ephemeral_data = rsa_mgr.decrypt(ephemeral_enc)
+            actual_tag = ephemeral_data[-16:]
+
+            # Decrypt the parameters
             cipher_params_decrypted = envelope_decrypt_params(
-                ephemeral_enc, param_cipher, param_tag, priv_key_path
+                ephemeral_enc, param_cipher, actual_tag, priv_key_path
             )
 
-            # Classical
+            # Classical decrypt
             recovered_data = decrypt_classical(
                 final_ciphertext, cipher_params_decrypted
             )
-
             self.assertEqual(plaintext_data, recovered_data)
 
     def test_end_to_end_large_data(self) -> None:
@@ -207,14 +205,19 @@ class TestEndToEnd(unittest.TestCase):
 
             final_ciphertext = file_data[cursor:]
 
+            # RSA-decrypt ephemeral data
+            rsa_mgr = RSAManager()
+            rsa_mgr.load_private_key(priv_key_path)
+            ephemeral_data = rsa_mgr.decrypt(ephemeral_enc)
+            actual_tag = ephemeral_data[-16:]
+
             # Envelope-decrypt
             cipher_params_dec = envelope_decrypt_params(
-                ephemeral_enc, param_cipher, param_tag, priv_key_path
+                ephemeral_enc, param_cipher, actual_tag, priv_key_path
             )
 
             # Classical
             recovered_data = decrypt_classical(final_ciphertext, cipher_params_dec)
-
             self.assertEqual(large_data, recovered_data)
 
 
