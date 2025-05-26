@@ -5,16 +5,9 @@ This module defines a simple interface for selecting input, output, and key file
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
-import pickle
 from typing import Optional
 
-from src.ciphers.monoalphabetic import MonoalphabeticCipher
-from src.ciphers.polyalphabetic import PolyalphabeticCipher
-from src.ciphers.transposition import TranspositionCipher
-from src.ciphers.vernam import VernamCipher
-from src.ciphers.vigenere import VigenereCipher
-from src.crypto.rsa_manager import RSAManager
-from src.crypto.hashing import sha256_hash_data
+from src.utils.pipeline import encrypt_file, decrypt_file
 
 
 def start_gui() -> None:
@@ -27,10 +20,7 @@ def start_gui() -> None:
 
 
 class CipherNexusGUI(tk.Frame):
-    """A Tkinter-based GUI for the Cipher Nexus encryption/decryption pipeline.
-
-    This GUI allows the user to select an input file, an output file, and an RSA key file in PEM format. Depending on whether the user clicks "Encrypt" or "Decrypt," the selected files are processed accordingly.
-    """
+    """A Tkinter-based GUI for the Cipher Nexus encryption/decryption pipeline."""
 
     def __init__(self, master: Optional[tk.Tk] = None) -> None:
         """Initialize the CipherNexusGUI and create UI elements.
@@ -120,7 +110,7 @@ class CipherNexusGUI(tk.Frame):
             self.entry_key.insert(0, path)
 
     def _encrypt_file(self) -> None:
-        """Perform encryption using layered classical ciphers and an RSA public key."""
+        """Perform encryption using the shared pipeline (RSA public key + layered ciphers)."""
         input_path = self.entry_input.get()
         output_path = self.entry_output.get()
         key_path = self.entry_key.get()
@@ -130,54 +120,14 @@ class CipherNexusGUI(tk.Frame):
             return
 
         try:
-            # Read all data from the input file (for simplicity).
-            with open(input_path, "rb") as f:
-                plaintext = f.read()
-
-            # Instantiate ciphers with random parameters.
-            mono = MonoalphabeticCipher()
-            poly = PolyalphabeticCipher()
-            trans = TranspositionCipher()
-            vig = VigenereCipher()
-            ver = VernamCipher()
-
-            # Layered encryption pipeline: trans -> mono -> poly -> vig -> ver
-            data = trans.encrypt(plaintext)
-            data = mono.encrypt(data)
-            data = poly.encrypt(data)
-            data = vig.encrypt(data)
-            data = ver.encrypt(data)
-
-            # Prepare parameters and original file hash for RSA encryption.
-            cipher_params = {
-                "mono_key": mono.key,
-                "poly_key": poly.key,
-                "trans_columns": trans.columns,
-                "vig_passphrase": vig.passphrase,
-                "ver_key": ver.key,
-                "sha256": sha256_hash_data(plaintext),
-            }
-            param_bytes = pickle.dumps(cipher_params)
-
-            # Load RSA public key and encrypt the parameter block.
-            rsa_mgr = RSAManager()
-            rsa_mgr.load_public_key(key_path)
-            encrypted_params = rsa_mgr.encrypt(param_bytes)
-
-            # Simple file format: [4-byte param length] [encrypted params] [ciphertext]
-            with open(output_path, "wb") as out_f:
-                out_f.write(len(encrypted_params).to_bytes(4, "big"))
-                out_f.write(encrypted_params)
-                out_f.write(data)
-
-            # Show status label after operation completes
+            encrypt_file(input_path, output_path, key_path)
             self.status_label.config(text="Encryption complete.")
             self.status_label.grid()
         except Exception as exc:
             messagebox.showerror("Error", f"Encryption failed: {exc}")
 
     def _decrypt_file(self) -> None:
-        """Perform decryption using layered classical ciphers and an RSA private key."""
+        """Perform decryption using the shared pipeline (RSA private key + layered ciphers)."""
         input_path = self.entry_input.get()
         output_path = self.entry_output.get()
         key_path = self.entry_key.get()
@@ -187,50 +137,7 @@ class CipherNexusGUI(tk.Frame):
             return
 
         try:
-            # Read the parameter block length and data.
-            with open(input_path, "rb") as f:
-                param_len_bytes = f.read(4)
-                param_len = int.from_bytes(param_len_bytes, "big")
-                encrypted_params = f.read(param_len)
-                ciphertext = f.read()
-
-            # Load RSA private key and decrypt the parameter block.
-            rsa_mgr = RSAManager()
-            rsa_mgr.load_private_key(key_path)
-
-            param_bytes = rsa_mgr.decrypt(encrypted_params)
-            cipher_params = pickle.loads(param_bytes)
-
-            # Reconstruct ciphers with the stored parameters.
-            mono = MonoalphabeticCipher(key=cipher_params["mono_key"])
-            poly = PolyalphabeticCipher(key=cipher_params["poly_key"])
-            trans = TranspositionCipher(columns=cipher_params["trans_columns"])
-            vig = VigenereCipher(passphrase=cipher_params["vig_passphrase"])
-            ver = VernamCipher(key=cipher_params["ver_key"])
-
-            # Reverse the encryption pipeline: ver -> vig -> poly -> mono -> trans
-            data = ver.decrypt(ciphertext)
-            data = vig.decrypt(data)
-            data = poly.decrypt(data)
-            data = mono.decrypt(data)
-            data = trans.decrypt(data)
-
-            # Verify the integrity of the decrypted file.
-            original_hash = cipher_params["sha256"]
-            new_hash = sha256_hash_data(data)
-            if new_hash != original_hash:
-                messagebox.showwarning(
-                    "Warning",
-                    "Decrypted file hash does not match the original. Possible tampering.",
-                )
-            else:
-                messagebox.showinfo("Info", "File integrity verified (SHA-256).")
-
-            # Write the recovered plaintext.
-            with open(output_path, "wb") as out_f:
-                out_f.write(data)
-
-            # Show status label after operation completes
+            decrypt_file(input_path, output_path, key_path)
             self.status_label.config(text="Decryption complete.")
             self.status_label.grid()
         except Exception as exc:
