@@ -28,33 +28,50 @@ class TestHybridParams(unittest.TestCase):
         """Clean up temp directory."""
         self.temp_dir.cleanup()
 
-    def test_tag_mismatch(self):
-        """Test that a GCM tag mismatch raises ValueError."""
+    def test_tag_mismatch(self) -> None:
+        """Test that a GCM tag mismatch raises ValueError and logs an error."""
         params = {"foo": "bar"}
-        ephemeral_enc, param_ciphertext, param_tag = envelope_encrypt_params(
+        ephemeral_enc, param_ciphertext, _ = envelope_encrypt_params(
             params, self.pub_key_path
         )
-        # Corrupt the tag in ephemeral_enc
-        # ephemeral_enc = RSA-encrypted AES key + IV + real_tag
-        # We'll pass a different 'param_tag' below.
+        # Corrupt the tag in ephemeral_decrypt call
         corrupted_tag = b"\x00" * 16
-        with self.assertRaises(ValueError):
-            envelope_decrypt_params(
-                ephemeral_enc, param_ciphertext, corrupted_tag, self.priv_key_path
-            )
 
-    def test_corrupted_ciphertext(self):
-        """Test that a corrupted ciphertext raises ValueError."""
+        # Capture logs at ERROR level from the 'src.crypto.hybrid' logger
+        with self.assertLogs("src.crypto.hybrid", level="ERROR") as captured:
+            with self.assertRaises(ValueError):
+                envelope_decrypt_params(
+                    ephemeral_enc, param_ciphertext, corrupted_tag, self.priv_key_path
+                )
+
+        # Verify the log message
+        self.assertTrue(
+            any("GCM tag mismatch" in msg for msg in captured.output),
+            "Expected GCM tag mismatch message not found in logs.",
+        )
+
+    def test_corrupted_ciphertext(self) -> None:
+        """Test that a corrupted AES-GCM ciphertext raises ValueError and logs an error."""
         params = {"secret": b"12345"}
         ephemeral_enc, param_ciphertext, param_tag = envelope_encrypt_params(
             params, self.pub_key_path
         )
-        # Corrupt param_ciphertext
+
+        # Corrupt the ciphertext
         corrupted_ciphertext = param_ciphertext[:-1] + b"\x99"
-        with self.assertRaises(ValueError):
-            envelope_decrypt_params(
-                ephemeral_enc, corrupted_ciphertext, param_tag, self.priv_key_path
-            )
+
+        # Capture logs at ERROR level
+        with self.assertLogs("src.crypto.hybrid", level="ERROR") as captured:
+            with self.assertRaises(ValueError):
+                envelope_decrypt_params(
+                    ephemeral_enc, corrupted_ciphertext, param_tag, self.priv_key_path
+                )
+
+        # Check log content if desired
+        self.assertTrue(
+            any("AES-GCM decryption failed" in msg for msg in captured.output),
+            "Expected AES-GCM decryption failure message not found in logs.",
+        )
 
 
 if __name__ == "__main__":
